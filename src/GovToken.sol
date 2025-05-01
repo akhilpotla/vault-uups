@@ -11,11 +11,7 @@ contract GovToken is ERC20Capped, ERC20Permit, ERC20Votes {
     constructor(
         uint256 initialSupply,
         uint256 cap
-    )
-        ERC20("Good Morning Vault", "GMV")
-        ERC20Capped(cap)
-        ERC20Permit("Good Morning Vault")
-    {
+    ) ERC20("GovToken", "GT") ERC20Capped(cap) ERC20Permit("GovToken") {
         _mint(msg.sender, initialSupply);
         _delegate(msg.sender, msg.sender);
     }
