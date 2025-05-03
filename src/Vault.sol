@@ -1,15 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-import {GovToken} from "./GovToken.sol";
+import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract Vault is ERC4626 {
-    mapping(address => uint256) public shareHolder;
+contract Vault is
+    Initializable,
+    ERC4626Upgradeable,
+    AccessControlUpgradeable,
+    UUPSUpgradeable
+{
+    bytes32 public constant GOVERNANCE_ROLE = keccak256("GOVERNANCE_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
-    constructor(
-        address _underlyingToken
-    ) ERC4626(IERC20(_underlyingToken)) ERC20("Vault Token", "VT") {}
+    function initialize(
+        ERC20 asset_,
+        address timelock,
+        address admin
+    ) public initializer {
+        __ERC4626_init(asset_);
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+
+        grantRole(DEFAULT_ADMIN_ROLE, admin);
+        grantRole(GOVERNANCE_ROLE, timelock);
+        grantRole(UPGRADER_ROLE, timelock);
+    }
+
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal view override {
+        require(
+            hasRole(UPGRADER_ROLE, msg.sender),
+            "Vault: must have upgrader role to upgrade"
+        );
+    }
 }
