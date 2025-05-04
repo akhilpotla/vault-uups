@@ -30,9 +30,7 @@ contract Vault is
         grantRole(UPGRADER_ROLE, timelock);
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal view override {
+    function _authorizeUpgrade(address newImplementation) internal override {
         require(
             hasRole(UPGRADER_ROLE, msg.sender),
             "Vault: must have upgrader role to upgrade"
