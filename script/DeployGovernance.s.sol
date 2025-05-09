@@ -46,9 +46,7 @@ contract DeployGovernance is Script {
         VaultGovernor vaultGovernor = new VaultGovernor(token, timelock);
 
         bytes32 PROPOSER_ROLE = timelock.PROPOSER_ROLE();
-        bytes32 EXECUTOR_ROLE = timelock.EXECUTOR_ROLE();
         bytes32 CANCELLER_ROLE = timelock.CANCELLER_ROLE();
-        bytes32 TIMELOCK_ADMIN_ROLE = timelock.DEFAULT_ADMIN_ROLE();
 
         timelock.grantRole(PROPOSER_ROLE, address(vaultGovernor));
         timelock.grantRole(CANCELLER_ROLE, address(vaultGovernor));
