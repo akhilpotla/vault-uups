@@ -100,4 +100,45 @@ contract GovTokenTest is Test {
             "TOKEN_DEPLOYER should have 300 votes"
         );
     }
+
+    function testNewMintedTokensIncreaseVotingPower() public {
+        vm.startPrank(USER);
+        token.delegate(USER);
+        vm.stopPrank();
+
+        token.mint(USER, 100);
+        assertEq(
+            token.balanceOf(USER),
+            600,
+            "USER should have 600 tokens after mint"
+        );
+        assertEq(
+            token.getVotes(USER),
+            600,
+            "USER should have 600 votes after self-delegation and token mint"
+        );
+        assertEq(
+            token.balanceOf(TOKEN_DEPLOYER),
+            500,
+            "TOKEN_DEPLOYER should still have 500 tokens after token mint for USER"
+        );
+        assertEq(
+            token.getVotes(TOKEN_DEPLOYER),
+            500,
+            "TOKEN_DEPLOYER should still have 500 votes after token mint for USER"
+        );
+    }
+
+    function testUSERShouldNotBeAbleToMintTokens() public {
+        vm.startPrank(USER);
+        vm.expectRevert();
+        token.mint(USER, 100);
+        vm.stopPrank();
+
+        assertEq(
+            token.balanceOf(USER),
+            500,
+            "USER should have 500 tokens after minting with incorrect role"
+        );
+    }
 }
