@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.29;
+
+import {Test, console} from "forge-std/Test.sol";
+import {GovToken} from "../src/GovToken.sol";
+
+contract GovTokenTest is Test {
+    GovToken public token;
+    address public USER = makeAddr("USER");
+    address public TOKEN_DEPLOYER;
+    uint256 public constant INITIAL_SUPPLY = 1_000;
+    uint256 public constant SUPPLY_CAP = 100_000;
+
+    function setUp() public {
+        token = new GovToken(INITIAL_SUPPLY, SUPPLY_CAP);
+        TOKEN_DEPLOYER = address(this);
+        token.transfer(USER, 500);
+    }
+
+    function testInitialSupply() public view {
+        assertEq(
+            token.totalSupply(),
+            INITIAL_SUPPLY,
+            "The total supply should be 1000"
+        );
+        assertEq(
+            token.balanceOf(TOKEN_DEPLOYER),
+            500,
+            "TOKEN_DEPLOYER balance should 500 after transfering token to the USER"
+        );
+    }
+
+    function testDelegation() public {
+        // Check initial voting power
+        assertEq(token.getVotes(USER), 0, "USER should have 0 votes initially");
+        assertEq(
+            token.getVotes(TOKEN_DEPLOYER),
+            500,
+            "TOKEN_DEPLOYER should have 500 votes initially"
+        );
+
+        // USER delegates votes to themselves
+        vm.startPrank(USER);
+        token.delegate(USER);
+        vm.stopPrank();
+
+        // Check voting power after delegation
+        assertEq(
+            token.getVotes(USER),
+            500,
+            "USER should have 500 votes after self-delegation"
+        );
+        assertEq(
+            token.getVotes(TOKEN_DEPLOYER),
+            500,
+            "TOKEN_DEPLOYER should have 500 votes after USER self-delegates"
+        );
+
+        // USER delegates votes to TOKEN_DEPLOYER
+        vm.startPrank(USER);
+        token.delegate(TOKEN_DEPLOYER);
+        vm.stopPrank();
+
+        // Check voting power after delegation to TOKEN_DEPLOYER
+        assertEq(
+            token.balanceOf(USER),
+            500,
+            "USER should still have 500 tokens after delegating voting rights"
+        );
+        assertEq(
+            token.getVotes(USER),
+            0,
+            "USER should have 0 votes after delegating to TOKEN_DEPLOYER"
+        );
+        assertEq(
+            token.getVotes(TOKEN_DEPLOYER),
+            INITIAL_SUPPLY,
+            "TOKEN_DEPLOYER should have 1000 votes after USER transfers delegation"
+        );
+    }
+
+    function testTransferUpdatesVotingPower() public {
+        // First delegate to themselves so transfers affect voting power
+        vm.startPrank(USER);
+        token.delegate(USER);
+        vm.stopPrank();
+
+        // Transfer more tokens to USER
+        token.transfer(USER, 200);
+
+        // Check voting power updates automatically through _update
+        assertEq(
+            token.getVotes(USER),
+            700,
+            "USER should have 700 votes after additional transfer of 200 tokens"
+        );
+        assertEq(
+            token.getVotes(TOKEN_DEPLOYER),
+            300,
+            "TOKEN_DEPLOYER should have 300 votes"
+        );
+    }
+}
