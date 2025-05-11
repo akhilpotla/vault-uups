@@ -91,7 +91,24 @@ contract VaultTest is Test {
         vault.initialize(token, address(timelock), TOKEN_DEPLOYER);
     }
 
-    function testZeroAddressRejection() public {}
+    function testZeroAddressRejection() public {
+        address admin = address(0);
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            admin
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            admin
+        );
+        vm.expectRevert("Admin cannot be the zero address.");
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+    }
 
     // Access Control Tests
     function testOnlyTimelockedUpgraderCanUpgrade() public {}

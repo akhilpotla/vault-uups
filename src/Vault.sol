@@ -25,7 +25,11 @@ contract Vault is
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        if (admin != address(0)) {
+            _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        } else {
+            revert("Admin cannot be the zero address.");
+        }
         _grantRole(GOVERNANCE_ROLE, timelock);
         _grantRole(UPGRADER_ROLE, timelock);
     }
