@@ -71,7 +71,26 @@ contract VaultTest is Test {
             "Asset not set correctly"
         );
     }
-    function testDoubleInitializationFails() public {}
+
+    function testDoubleInitializationFails() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        new ERC1967Proxy(address(vaultImpl), initData);
+        vm.expectRevert();
+        vault.initialize(token, address(timelock), TOKEN_DEPLOYER);
+    }
+
     function testZeroAddressRejection() public {}
 
     // Access Control Tests
