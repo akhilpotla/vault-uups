@@ -107,11 +107,38 @@ contract VaultTest is Test {
             admin
         );
         vm.expectRevert("Admin cannot be the zero address.");
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        new ERC1967Proxy(address(vaultImpl), initData);
     }
 
     // Access Control Tests
-    function testOnlyTimelockedUpgraderCanUpgrade() public {}
+    function testOnlyTimelockedUpgraderCanUpgrade() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        Vault newImplementation = new Vault();
+
+        // Test that USER cannot upgrade
+        vm.prank(USER);
+        vm.expectRevert("Vault: must have upgrader role to upgrade");
+        vault.upgradeToAndCall(address(newImplementation), "");
+
+        // Test that timelock CAN upgrade
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImplementation), "");
+    }
     function testUpgradeWithoutRoleFails() public {}
     function testAdminCanGrantRoles() public {}
     function testNonAdminCannotGrantRoles() public {}
