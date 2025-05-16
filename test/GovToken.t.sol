@@ -30,6 +30,18 @@ contract GovTokenTest is Test {
         );
     }
 
+    function testMintingToCapSucceeds() public {
+        // Mint up to the cap
+        token.mint(USER, SUPPLY_CAP - INITIAL_SUPPLY);
+        assertEq(token.totalSupply(), SUPPLY_CAP);
+    }
+
+    function testMintingBeyondCapFails() public {
+        // Try to mint beyond the cap
+        vm.expectRevert();
+        token.mint(USER, SUPPLY_CAP - INITIAL_SUPPLY + 1);
+    }
+
     function testDelegation() public {
         // Check initial voting power
         assertEq(token.getVotes(USER), 0, "USER should have 0 votes initially");
