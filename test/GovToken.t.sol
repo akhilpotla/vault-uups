@@ -153,4 +153,80 @@ contract GovTokenTest is Test {
             "USER should have 500 tokens after minting with incorrect role"
         );
     }
+
+    // Role Management Tests
+    function testAdminCanGrantMinterRole() public {
+        token.grantRole(token.MINTER_ROLE(), USER);
+
+        vm.prank(USER);
+        token.mint(USER, 100);
+        assertEq(
+            token.balanceOf(USER),
+            600,
+            "USER should have 600 after minting"
+        );
+    }
+
+    function testRevokeRole() public {
+        token.grantRole(token.MINTER_ROLE(), USER);
+        token.revokeRole(token.MINTER_ROLE(), USER);
+
+        vm.prank(USER);
+        vm.expectRevert();
+        token.mint(USER, 100);
+    }
+
+    // Permit Functionality Tests
+    function testPermit() public {
+        uint256 privateKey = 1;
+        address owner = vm.addr(privateKey);
+
+        token.transfer(owner, 100);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 domainSeparator = token.DOMAIN_SEPARATOR();
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                domainSeparator,
+                keccak256(
+                    abi.encode(
+                        keccak256(
+                            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                        ),
+                        owner,
+                        USER,
+                        100,
+                        0,
+                        deadline
+                    )
+                )
+            )
+        );
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+
+        token.permit(owner, USER, 100, deadline, v, r, s);
+        assertEq(token.allowance(owner, USER), 100);
+    }
+
+    // Historical Voting Power Tests
+    function testGetPastVotes() public {
+        vm.prank(USER);
+        token.delegate(USER);
+
+        uint256 blockNumber = block.number;
+        vm.roll(blockNumber + 1);
+
+        token.transfer(USER, 200);
+        vm.roll(blockNumber + 2);
+
+        assertEq(token.getPastVotes(USER, blockNumber), 500);
+        assertEq(token.getPastVotes(USER, blockNumber + 1), 700);
+    }
+
+    // Additional Edge Cases
+    function testBurnTokensAffectsVotingPower() public {}
+    function testDelegateChangeDuringTransfer() public {}
 }
