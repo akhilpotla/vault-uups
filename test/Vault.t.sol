@@ -17,6 +17,7 @@ contract VaultTest is Test {
     uint256 public constant INITIAL_SUPPLY = 1_000;
     uint256 public constant SUPPLY_CAP = 100_000;
     uint256 public constant MIN_DELAY = 12 seconds;
+    bytes32 public constant GOVERNANCE_ROLE = keccak256("GOVERNANCE_ROLE");
     address[] public proposers = new address[](1);
     address[] public executors = new address[](1);
 
@@ -158,8 +159,16 @@ contract VaultTest is Test {
         ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
         vault = Vault(address(proxy));
 
+        bytes32 DEFAULT_ADMIN_ROLE = 0x00;
+
+        assertFalse(vault.hasRole(DEFAULT_ADMIN_ROLE, USER));
+
         vm.prank(TOKEN_DEPLOYER);
-        // vault.grantRole(DEFAULT_ADMIN_ROLE, USER);
+        vault.grantRole(DEFAULT_ADMIN_ROLE, USER);
+        assertTrue(vault.hasRole(DEFAULT_ADMIN_ROLE, USER));
+
+        vm.prank(USER);
+        vault.grantRole(GOVERNANCE_ROLE, makeAddr("USER2"));
     }
 
     function testNonAdminCannotGrantRoles() public {}
