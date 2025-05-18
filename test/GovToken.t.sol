@@ -227,6 +227,14 @@ contract GovTokenTest is Test {
     }
 
     // Additional Edge Cases
-    function testBurnTokensAffectsVotingPower() public {}
+    function testBurnTokensAffectsVotingPower() public {
+        vm.prank(USER);
+        token.delegate(USER);
+
+        vm.prank(USER);
+        token.burn(100);
+
+        assertEq(token.getVotes(USER), 400);
+    }
     function testDelegateChangeDuringTransfer() public {}
 }

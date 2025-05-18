@@ -34,6 +34,10 @@ contract GovToken is ERC20Capped, ERC20Permit, ERC20Votes, AccessControl {
         super._update(from, to, amount);
     }
 
+    function burn(uint256 amount) public {
+        _burn(msg.sender, amount);
+    }
+
     function nonces(
         address owner
     ) public view virtual override(ERC20Permit, Nonces) returns (uint256) {
