@@ -236,5 +236,28 @@ contract GovTokenTest is Test {
 
         assertEq(token.getVotes(USER), 400);
     }
-    function testDelegateChangeDuringTransfer() public {}
+
+    function testDelegateChangeDuringTransfer() public {
+        vm.prank(USER);
+        token.delegate(TOKEN_DEPLOYER);
+
+        assertEq(token.getVotes(TOKEN_DEPLOYER), INITIAL_SUPPLY);
+
+        token.transfer(USER, 100);
+
+        assertEq(token.balanceOf(USER), 600);
+        assertEq(token.balanceOf(TOKEN_DEPLOYER), 400);
+        assertEq(token.getVotes(USER), 0);
+        assertEq(token.getVotes(TOKEN_DEPLOYER), 1000);
+    }
+
+    function testBurnReducesDelegatedVotingPower() public {
+        vm.prank(USER);
+        token.delegate(TOKEN_DEPLOYER);
+
+        vm.prank(USER);
+        token.burn(100);
+
+        assertEq(token.getVotes(TOKEN_DEPLOYER), 900);
+    }
 }
