@@ -171,7 +171,31 @@ contract VaultTest is Test {
         vault.grantRole(GOVERNANCE_ROLE, makeAddr("USER2"));
     }
 
-    function testNonAdminCannotGrantRoles() public {}
+    function testNonAdminCannotGrantRoles() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        bytes32 DEFAULT_ADMIN_ROLE = 0x00;
+
+        assertFalse(vault.hasRole(DEFAULT_ADMIN_ROLE, USER));
+
+        vm.prank(USER);
+        vm.expectRevert();
+        vault.grantRole(DEFAULT_ADMIN_ROLE, makeAddr("USER2"));
+    }
 
     // ERC4626 Functionality Tests
     function testDeposit() public {}
