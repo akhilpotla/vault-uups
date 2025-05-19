@@ -347,7 +347,7 @@ contract VaultTest is Test {
         assertEq(
             expectedShares,
             depositAmount,
-            "Shares received should match the expected shares"
+            "Expected shares should match the deposit amount"
         );
 
         // Test preview after deposits exist
@@ -363,7 +363,49 @@ contract VaultTest is Test {
         // For a standard vault without fees, this should still be 1:1
         assertEq(expectedSharesForSecondDeposit, secondDepositAmount);
     }
-    function testPreviewWithdraw() public {}
+
+    function testPreviewWithdraw() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        uint256 depositAmount = 100 * 10 ** 18;
+        address receiver = USER;
+
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, receiver);
+
+        uint256 withdrawAmount = 50 * 10 ** 18;
+        uint256 expectedBurnedShares = vault.previewWithdraw(withdrawAmount);
+
+        assertEq(
+            expectedBurnedShares,
+            withdrawAmount,
+            "Expected burned shares should equal withdraw amount"
+        );
+
+        vm.prank(USER);
+        vault.approve(address(this), expectedBurnedShares);
+        vault.withdraw(withdrawAmount, USER, USER);
+
+        uint256 secondWithdrawAmount = 20 * 10 ** 18;
+        uint256 secondExpectedBurnedShares = vault.previewWithdraw(
+            secondWithdrawAmount
+        );
+        assertEq(secondExpectedBurnedShares, secondWithdrawAmount);
+    }
 
     // Upgradeability Tests
     function testUpgradeToNewImplementation() public {}
