@@ -405,6 +405,15 @@ contract VaultTest is Test {
             secondWithdrawAmount
         );
         assertEq(secondExpectedBurnedShares, secondWithdrawAmount);
+
+        // Donate tokens to change the exchange rate
+        token.transfer(address(vault), 10 * 10 ** 18);
+        uint256 thirdWithdrawAmount = 10 * 10 ** 18;
+        // Now shares needed should be less than assets withdrawn
+        uint256 thirdExpectedBurnedShares = vault.previewWithdraw(
+            thirdWithdrawAmount
+        );
+        assertTrue(thirdExpectedBurnedShares < thirdWithdrawAmount);
     }
 
     // Upgradeability Tests
