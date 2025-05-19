@@ -323,7 +323,46 @@ contract VaultTest is Test {
             "Max deposit should be unlimited"
         );
     }
-    function testPreviewDeposit() public {}
+
+    function testPreviewDeposit() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        uint256 depositAmount = 100 * 10 ** 18;
+        uint256 expectedShares = vault.previewDeposit(depositAmount);
+
+        assertEq(
+            expectedShares,
+            depositAmount,
+            "Shares received should match the expected shares"
+        );
+
+        // Test preview after deposits exist
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, TOKEN_DEPLOYER);
+
+        // Now preview another deposit
+        uint256 secondDepositAmount = 50 * 10 ** 18;
+        uint256 expectedSharesForSecondDeposit = vault.previewDeposit(
+            secondDepositAmount
+        );
+
+        // For a standard vault without fees, this should still be 1:1
+        assertEq(expectedSharesForSecondDeposit, secondDepositAmount);
+    }
     function testPreviewWithdraw() public {}
 
     // Upgradeability Tests
