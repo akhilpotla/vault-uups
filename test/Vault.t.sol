@@ -297,7 +297,32 @@ contract VaultTest is Test {
         assertEq(vault.totalAssets(), vaultInitialAssets - withdrawAmount);
     }
 
-    function testMaxDeposit() public {}
+    function testMaxDeposit() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        address receiver = USER;
+        uint256 maxShares = vault.maxDeposit(receiver);
+
+        assertEq(
+            maxShares,
+            type(uint256).max,
+            "Max deposit should be unlimited"
+        );
+    }
     function testPreviewDeposit() public {}
     function testPreviewWithdraw() public {}
 
