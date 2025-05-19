@@ -17,7 +17,6 @@ contract VaultTest is Test {
     uint256 public constant INITIAL_SUPPLY = 1_000;
     uint256 public constant SUPPLY_CAP = 100_000;
     uint256 public constant MIN_DELAY = 12 seconds;
-    bytes32 public constant GOVERNANCE_ROLE = keccak256("GOVERNANCE_ROLE");
     address[] public proposers = new address[](1);
     address[] public executors = new address[](1);
 
@@ -160,6 +159,7 @@ contract VaultTest is Test {
         vault = Vault(address(proxy));
 
         bytes32 DEFAULT_ADMIN_ROLE = 0x00;
+        bytes32 GOVERNANCE_ROLE = keccak256("GOVERNANCE_ROLE");
 
         assertFalse(vault.hasRole(DEFAULT_ADMIN_ROLE, USER));
 
@@ -198,8 +198,105 @@ contract VaultTest is Test {
     }
 
     // ERC4626 Functionality Tests
-    function testDeposit() public {}
-    function testWithdraw() public {}
+    function testDeposit() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        uint256 depositAmount = 100 * 10 ** 18;
+        address receiver = USER;
+
+        uint256 initialTokenBalance = token.balanceOf(TOKEN_DEPLOYER);
+        uint256 initialShareBalance = vault.balanceOf(receiver);
+
+        token.approve(address(vault), depositAmount);
+
+        uint256 expectedShares = vault.previewDeposit(depositAmount);
+
+        uint256 sharesReceived = vault.deposit(depositAmount, receiver);
+
+        assertEq(
+            sharesReceived,
+            expectedShares,
+            "Shares received should match the expected shares"
+        );
+        assertEq(
+            token.balanceOf(TOKEN_DEPLOYER),
+            initialTokenBalance - depositAmount,
+            "Tokens should be deducted from depositor"
+        );
+        assertEq(
+            vault.balanceOf(USER),
+            initialShareBalance + sharesReceived,
+            "Shares should be added to receiver"
+        );
+        assertEq(
+            vault.totalAssets(),
+            depositAmount,
+            "Total assets should match deposit"
+        );
+    }
+
+    function testWithdraw() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        uint256 depositAmount = 100 * 10 ** 18;
+        address receiver = USER;
+
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, receiver);
+
+        uint256 userInitialTokenBalance = token.balanceOf(USER);
+        uint256 userInitialShareBalance = vault.balanceOf(USER);
+        uint256 vaultInitialAssets = vault.totalAssets();
+
+        uint256 withdrawAmount = 50 * 10 ** 18;
+        uint256 expectedBurnedShares = vault.previewWithdraw(withdrawAmount);
+
+        vm.prank(USER);
+        vault.approve(address(this), expectedBurnedShares);
+
+        uint256 burnedShares = vault.withdraw(withdrawAmount, USER, USER);
+
+        assertEq(
+            burnedShares,
+            expectedBurnedShares,
+            "Burned shares should match expected burned shares"
+        );
+        assertEq(
+            token.balanceOf(USER),
+            userInitialTokenBalance + withdrawAmount
+        );
+        assertEq(vault.balanceOf(USER), userInitialShareBalance - burnedShares);
+        assertEq(vault.totalAssets(), vaultInitialAssets - withdrawAmount);
+    }
+
     function testMaxDeposit() public {}
     function testPreviewDeposit() public {}
     function testPreviewWithdraw() public {}
