@@ -6,6 +6,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {GovToken} from "../src/GovToken.sol";
 import {Vault} from "../src/Vault.sol";
+import {VaultV2} from "../src/VaultV2.sol";
 import {console2} from "forge-std/console2.sol";
 
 contract VaultTest is Test {
@@ -417,7 +418,86 @@ contract VaultTest is Test {
     }
 
     // Upgradeability Tests
-    function testUpgradeToNewImplementation() public {}
+    function testUpgradeToNewImplementation() public {
+        TimelockController timelock = new TimelockController(
+            MIN_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+
+        uint256 depositAmount = 100 * 10 ** 18;
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, USER);
+
+        assertEq(vault.totalAssets(), depositAmount);
+        assertEq(vault.balanceOf(USER), depositAmount);
+
+        VaultV2 newImplementation = new VaultV2();
+
+        // Upgrade to the new implementation
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImplementation), "");
+
+        // Convert the proxy to VaultV2 to access new functions
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+
+        // Verify state is preserved after upgrade
+        assertEq(
+            upgradedVault.totalAssets(),
+            depositAmount,
+            "Assets not preserved after upgrade"
+        );
+        assertEq(
+            upgradedVault.balanceOf(USER),
+            depositAmount,
+            "Shares not preserved after upgrade"
+        );
+        assertEq(
+            address(upgradedVault.asset()),
+            address(token),
+            "Asset reference not preserved"
+        );
+
+        // Verify new functionality works
+        assertFalse(
+            upgradedVault.paused(),
+            "Vault should not be paused after upgrade"
+        );
+
+        // Test new pause functionality (from the new implementation)
+        vm.prank(address(timelock));
+        upgradedVault.pause();
+        assertTrue(upgradedVault.paused(), "Vault should be paused");
+
+        // Verify that paused vault doesn't allow deposits
+        token.approve(address(upgradedVault), depositAmount);
+        vm.expectRevert("Pausable: paused");
+        upgradedVault.deposit(depositAmount, USER);
+
+        // Test unpause
+        vm.prank(address(timelock));
+        upgradedVault.unpause();
+        assertFalse(upgradedVault.paused(), "Vault should be unpaused");
+
+        // Verify deposits work again
+        upgradedVault.deposit(depositAmount, USER);
+        assertEq(
+            upgradedVault.totalAssets(),
+            depositAmount * 2,
+            "Deposit after unpause failed"
+        );
+    }
+
     function testStorageLayoutPreservation() public {}
     function testSelfdestruct() public {}
 
