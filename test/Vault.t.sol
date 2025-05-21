@@ -29,8 +29,10 @@ contract VaultTest is Test {
         vaultImpl = new Vault();
     }
 
-    // Initialization Tests
-    function testCorrectInitialization() public {
+    function _setupVaultAndProxy()
+        internal
+        returns (TimelockController, ERC1967Proxy)
+    {
         TimelockController timelock = new TimelockController(
             MIN_DELAY,
             proposers,
@@ -45,6 +47,15 @@ contract VaultTest is Test {
             TOKEN_DEPLOYER
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        return (timelock, proxy);
+    }
+
+    // Initialization Tests
+    function testCorrectInitialization() public {
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         // Verify the roles were set correctly
@@ -74,20 +85,10 @@ contract VaultTest is Test {
     }
 
     function testDoubleInitializationFails() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vm.expectRevert();
         vault.initialize(token, address(timelock), TOKEN_DEPLOYER);
     }
@@ -113,20 +114,10 @@ contract VaultTest is Test {
 
     // Access Control Tests
     function testOnlyTimelockedUpgraderCanUpgrade() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         Vault newImplementation = new Vault();
@@ -140,23 +131,15 @@ contract VaultTest is Test {
         vm.prank(address(timelock));
         vault.upgradeToAndCall(address(newImplementation), "");
     }
+
+    // TODO: testUpgradeWithoutRoleFails
     function testUpgradeWithoutRoleFails() public {}
 
     function testAdminCanGrantRoles() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         bytes32 DEFAULT_ADMIN_ROLE = 0x00;
@@ -173,20 +156,10 @@ contract VaultTest is Test {
     }
 
     function testNonAdminCannotGrantRoles() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         bytes32 DEFAULT_ADMIN_ROLE = 0x00;
@@ -200,20 +173,10 @@ contract VaultTest is Test {
 
     // ERC4626 Functionality Tests
     function testDeposit() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         uint256 depositAmount = 100 * 10 ** 18;
@@ -251,20 +214,10 @@ contract VaultTest is Test {
     }
 
     function testWithdraw() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         uint256 depositAmount = 100 * 10 ** 18;
@@ -299,20 +252,10 @@ contract VaultTest is Test {
     }
 
     function testMaxDeposit() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         address receiver = USER;
@@ -326,20 +269,10 @@ contract VaultTest is Test {
     }
 
     function testPreviewDeposit() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         uint256 depositAmount = 100 * 10 ** 18;
@@ -366,20 +299,10 @@ contract VaultTest is Test {
     }
 
     function testPreviewWithdraw() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         uint256 depositAmount = 100 * 10 ** 18;
@@ -419,20 +342,10 @@ contract VaultTest is Test {
 
     // Upgradeability Tests
     function testUpgradeToNewImplementation() public {
-        TimelockController timelock = new TimelockController(
-            MIN_DELAY,
-            proposers,
-            executors,
-            TOKEN_DEPLOYER
-        );
-
-        bytes memory initData = abi.encodeWithSelector(
-            Vault.initialize.selector,
-            address(token),
-            address(timelock),
-            TOKEN_DEPLOYER
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
         vault = Vault(address(proxy));
 
         uint256 depositAmount = 100 * 10 ** 18;
@@ -498,7 +411,152 @@ contract VaultTest is Test {
         );
     }
 
-    function testStorageLayoutPreservation() public {}
+    function testStorageLayoutPreservation() public {
+        // 1. Setup initial contract and proxy
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        // 2. Create test addresses
+        address user1 = makeAddr("USER1");
+        address user2 = makeAddr("USER2");
+        address user3 = makeAddr("USER3");
+
+        // 3. Setup complex state before upgrade
+        // Deposit different amounts for different users
+        uint256 amount1 = 100 * 10 ** 18;
+        uint256 amount2 = 250 * 10 ** 18;
+        uint256 amount3 = 75 * 10 ** 18;
+
+        // Transfer tokens to users
+        token.transfer(user1, amount1);
+        token.transfer(user2, amount2);
+        token.transfer(user3, amount3);
+
+        // Perform deposits
+        vm.startPrank(user1);
+        token.approve(address(vault), amount1);
+        vault.deposit(amount1, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        token.approve(address(vault), amount2);
+        vault.deposit(amount2, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        token.approve(address(vault), amount3);
+        vault.deposit(amount3, user3);
+        vm.stopPrank();
+
+        // Grant some custom roles
+        bytes32 CUSTOM_ROLE = keccak256("CUSTOM_ROLE");
+        vm.prank(TOKEN_DEPLOYER);
+        vault.grantRole(CUSTOM_ROLE, user1);
+
+        // 4. Capture state before upgrade
+        uint256 totalAssetsBefore = vault.totalAssets();
+        uint256 user1SharesBefore = vault.balanceOf(user1);
+        uint256 user2SharesBefore = vault.balanceOf(user2);
+        uint256 user3SharesBefore = vault.balanceOf(user3);
+        address assetBefore = address(vault.asset());
+        bool user1HasCustomRole = vault.hasRole(CUSTOM_ROLE, user1);
+        bool timelockHasUpgraderRole = vault.hasRole(
+            vault.UPGRADER_ROLE(),
+            address(timelock)
+        );
+        bool timelockHasGovernanceRole = vault.hasRole(
+            vault.GOVERNANCE_ROLE(),
+            address(timelock)
+        );
+
+        // 5. Deploy and upgrade to VaultV2
+        VaultV2 newImplementation = new VaultV2();
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImplementation), "");
+
+        // 6. Access the upgraded contract
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+
+        // 7. Verify all state has been preserved
+        assertEq(
+            upgradedVault.totalAssets(),
+            totalAssetsBefore,
+            "Total assets not preserved"
+        );
+        assertEq(
+            upgradedVault.balanceOf(user1),
+            user1SharesBefore,
+            "User1 shares not preserved"
+        );
+        assertEq(
+            upgradedVault.balanceOf(user2),
+            user2SharesBefore,
+            "User2 shares not preserved"
+        );
+        assertEq(
+            upgradedVault.balanceOf(user3),
+            user3SharesBefore,
+            "User3 shares not preserved"
+        );
+        assertEq(
+            address(upgradedVault.asset()),
+            assetBefore,
+            "Asset reference not preserved"
+        );
+        assertEq(
+            upgradedVault.hasRole(CUSTOM_ROLE, user1),
+            user1HasCustomRole,
+            "Custom role not preserved"
+        );
+        assertEq(
+            upgradedVault.hasRole(
+                upgradedVault.UPGRADER_ROLE(),
+                address(timelock)
+            ),
+            timelockHasUpgraderRole,
+            "Upgrader role not preserved"
+        );
+        assertEq(
+            upgradedVault.hasRole(
+                upgradedVault.GOVERNANCE_ROLE(),
+                address(timelock)
+            ),
+            timelockHasGovernanceRole,
+            "Governance role not preserved"
+        );
+
+        // 8. Test new VaultV2 functionality still works with preserved state
+        vm.prank(address(timelock));
+        upgradedVault.pause();
+        assertTrue(
+            upgradedVault.paused(),
+            "New functionality should work after upgrade"
+        );
+
+        // 9. Verify state integrity through operations
+        vm.prank(address(timelock));
+        upgradedVault.unpause();
+
+        // User1 should be able to withdraw their original deposit
+        vm.startPrank(user1);
+        upgradedVault.withdraw(amount1, user1, user1);
+        vm.stopPrank();
+
+        assertEq(
+            token.balanceOf(user1),
+            amount1,
+            "User1 should recover their full deposit"
+        );
+        assertEq(
+            upgradedVault.balanceOf(user1),
+            0,
+            "User1 should have 0 shares after withdrawal"
+        );
+    }
+
     function testSelfdestruct() public {}
 
     // Integration Tests
