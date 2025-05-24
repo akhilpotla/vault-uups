@@ -596,6 +596,7 @@ contract VaultTest is Test {
         vm.prank(USER);
         vault.withdraw(withdrawAmount, USER, USER);
         assertEq(initialTokenAmount + withdrawAmount, token.balanceOf(USER));
+        assertEq(initialShares - withdrawAmount, vault.balanceOf(USER));
     }
 
     // Integration Tests
