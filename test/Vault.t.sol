@@ -600,7 +600,69 @@ contract VaultTest is Test {
     }
 
     // Integration Tests
-    function testTimelockDelayedUpgrade() public {}
+    function testTimelockDelayedUpgrade() public {
+        // 1. Setup Phase
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        // Add before upgrade
+        uint256 depositAmount = 100 * 10 ** 18;
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, USER);
+        uint256 initialBalance = vault.balanceOf(USER);
+
+        // 2. Prepare the upgrade
+        VaultV2 newImplementation = new VaultV2();
+
+        // 3. Schedule the upgrade
+        bytes memory upgradeCallData = abi.encodeWithSelector(
+            vault.upgradeToAndCall.selector,
+            address(newImplementation),
+            ""
+        );
+        bytes32 salt = keccak256(
+            abi.encodePacked(block.timestamp, address(newImplementation))
+        );
+        timelock.schedule(
+            address(proxy),
+            0,
+            upgradeCallData,
+            bytes32(0),
+            salt,
+            1000 * MIN_DELAY
+        );
+
+        // 4. Test premature execution
+        vm.expectRevert();
+        vault.upgradeToAndCall(address(newImplementation), "");
+
+        // 5. Advance time
+        vm.warp(block.timestamp + 1000 * MIN_DELAY);
+
+        // 6. Execute the upgrade
+        timelock.execute(address(proxy), 0, upgradeCallData, bytes32(0), salt);
+
+        // 7. Verify success
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+        vm.prank(address(timelock));
+        upgradedVault.pause();
+        assertTrue(upgradedVault.paused());
+
+        // 8. Additional verification
+        assertEq(
+            upgradedVault.balanceOf(USER),
+            initialBalance,
+            "User balance should be preserved"
+        );
+        assertEq(
+            upgradedVault.totalAssets(),
+            depositAmount,
+            "Total assets should be preserved"
+        );
+    }
     function testProposalExecution() public {}
     function testDepositAndUpgrade() public {}
 
