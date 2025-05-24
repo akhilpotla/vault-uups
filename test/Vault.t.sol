@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {GovToken} from "../src/GovToken.sol";
+import {MaliciousVault} from "../src/MaliciousVault.sol";
 import {Vault} from "../src/Vault.sol";
 import {VaultV2} from "../src/VaultV2.sol";
 import {console2} from "forge-std/console2.sol";
@@ -557,7 +558,45 @@ contract VaultTest is Test {
         );
     }
 
-    function testSelfdestruct() public {}
+    function testSelfdestruct() public {
+        // 1. Setup the initial vault and proxy using your standard procedure
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        uint256 amount = 100 * 10 ** 18;
+        token.transfer(USER, amount);
+
+        vm.startPrank(USER);
+        uint256 depositAmount = 50 * 10 ** 18;
+        token.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, USER);
+        vm.stopPrank();
+
+        uint256 initialTokenAmount = token.balanceOf(USER);
+        uint256 initialShares = vault.balanceOf(USER);
+
+        // 2. Deploy the malicious implementation contract
+        MaliciousVault maliciousVaultImpl = new MaliciousVault();
+
+        // 3. Perform an upgrade to the malicious implementation
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(maliciousVaultImpl), "");
+
+        // 4. Call the destroy function to selfdestruct the implementation
+        MaliciousVault(address(proxy)).destroy();
+
+        // 5. Verify the proxy still works by calling functions and checking state
+        assertEq(initialTokenAmount, token.balanceOf(USER));
+        assertEq(initialShares, vault.balanceOf(USER));
+
+        uint256 withdrawAmount = 10 * 10 ** 18;
+        vm.prank(USER);
+        vault.withdraw(withdrawAmount, USER, USER);
+        assertEq(initialTokenAmount + withdrawAmount, token.balanceOf(USER));
+    }
 
     // Integration Tests
     function testTimelockDelayedUpgrade() public {}
