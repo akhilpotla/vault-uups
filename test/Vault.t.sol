@@ -3,11 +3,14 @@ pragma solidity ^0.8.29;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {GovToken} from "../src/GovToken.sol";
 import {MaliciousVault} from "../src/MaliciousVault.sol";
 import {Vault} from "../src/Vault.sol";
 import {VaultV2} from "../src/VaultV2.sol";
+import {VaultGovernor} from "../src/VaultGovernor.sol";
 import {console2} from "forge-std/console2.sol";
 
 contract VaultTest is Test {
@@ -663,7 +666,126 @@ contract VaultTest is Test {
             "Total assets should be preserved"
         );
     }
-    function testProposalExecution() public {}
+
+    function testProposalExecution() public {
+        // 1. Setup the governance system
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        VaultGovernor governor = new VaultGovernor(
+            IVotes(address(token)),
+            timelock
+        );
+
+        bytes32 PROPOSER_ROLE = timelock.PROPOSER_ROLE();
+        bytes32 EXECUTOR_ROLE = timelock.EXECUTOR_ROLE();
+        bytes32 CANCELLER_ROLE = timelock.CANCELLER_ROLE();
+
+        timelock.grantRole(PROPOSER_ROLE, address(governor));
+        timelock.grantRole(EXECUTOR_ROLE, address(governor));
+        timelock.grantRole(CANCELLER_ROLE, address(governor));
+
+        // 2. Distribute tokens and setup voting power
+        // Setup users with tokens
+        address user1 = makeAddr("USER1");
+        address user2 = makeAddr("USER2");
+        address user3 = makeAddr("USER3");
+
+        uint256 amount1 = 100 * 10 ** 18;
+        uint256 amount2 = 250 * 10 ** 18;
+        uint256 amount3 = 75 * 10 ** 18;
+
+        token.transfer(user1, amount1);
+        token.transfer(user2, amount2);
+        token.transfer(user3, amount3);
+
+        // Users must delegate voting power to themselves
+        vm.prank(user1);
+        token.delegate(user1);
+
+        vm.prank(user2);
+        token.delegate(user2);
+
+        vm.prank(user3);
+        token.delegate(user3);
+
+        // 3. Create a proposal
+        VaultV2 vaultV2Impl = new VaultV2();
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(vaultV2Impl), "");
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+
+        // Create calldata for pausing the vault
+        bytes memory pauseCalldata = abi.encodeWithSelector(
+            VaultV2.pause.selector
+        );
+
+        // Create proposal
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        string memory description = "Proposal #1: Pause the vault";
+
+        targets[0] = address(proxy);
+        values[0] = 0;
+        calldatas[0] = pauseCalldata;
+
+        vm.prank(user1);
+        uint256 proposalId = governor.propose(
+            targets,
+            values,
+            calldatas,
+            description
+        );
+
+        // 4. Vote on the proposal
+        // Advance time past voting delay
+        vm.roll(block.number + governor.votingDelay() + 1);
+
+        // Cast votes
+        vm.prank(user1);
+        governor.castVote(proposalId, 1);
+
+        vm.prank(user2);
+        governor.castVote(proposalId, 1);
+
+        vm.prank(user3);
+        governor.castVote(proposalId, 1);
+
+        // Advance time past voting period
+        vm.roll(block.number + governor.votingPeriod() + 1);
+
+        // 5. Queue and execute
+        // Check proposal secceeded
+        assertEq(
+            uint256(governor.state(proposalId)),
+            uint256(IGovernor.ProposalState.Succeeded)
+        );
+
+        // Queue proposal
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        // Advance time past timelock delay
+        vm.warp(block.timestamp + timelock.getMinDelay() + 1);
+
+        // Execute proposal
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        // Verify the vault is now paused
+        assertTrue(
+            upgradedVault.paused(),
+            "Vault should be paused after proposal execution"
+        );
+
+        // Try to deposit - should fail
+        token.approve(address(upgradedVault), 10 * 10 ** 18);
+        vm.expectRevert("Pausable: paused");
+        upgradedVault.deposit(10 * 10 ** 18, user1);
+    }
     function testDepositAndUpgrade() public {}
 
     // Edge Cases and Security
