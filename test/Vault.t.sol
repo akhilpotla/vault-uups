@@ -786,7 +786,225 @@ contract VaultTest is Test {
         vm.expectRevert("Pausable: paused");
         upgradedVault.deposit(10 * 10 ** 18, user1);
     }
-    function testDepositAndUpgrade() public {}
+    function testDepositAndUpgrade() public {
+        // 1. Setup initial environment
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        // 2. Initial state testing
+        uint256 initialAssets = vault.totalAssets();
+        uint256 maxDeposit = vault.maxDeposit(USER);
+
+        // 3. Pre-upgrade deposits
+        address user1 = makeAddr("USER1");
+        address user2 = makeAddr("USER2");
+        address user3 = makeAddr("USER3");
+        uint256 amount1 = 100 * 10 ** 18;
+        uint256 amount2 = 250 * 10 ** 18;
+        uint256 amount3 = 75 * 10 ** 18;
+
+        // Transfer tokens to users
+        token.transfer(user1, amount1);
+        token.transfer(user2, amount2);
+        token.transfer(user3, amount3);
+
+        // Perform deposits
+        vm.startPrank(user1);
+        token.approve(address(vault), amount1);
+        vault.deposit(amount1, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        token.approve(address(vault), amount2);
+        vault.deposit(amount2, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        token.approve(address(vault), amount3);
+        vault.deposit(amount3, user3);
+        vm.stopPrank();
+
+        uint256 totalAssetsBefore = vault.totalAssets();
+        uint256 user1SharesBefore = vault.balanceOf(user1);
+        uint256 user2SharesBefore = vault.balanceOf(user2);
+        uint256 user3SharesBefore = vault.balanceOf(user3);
+        uint256 user1BalanceBefore = token.balanceOf(user1);
+        uint256 user2BalanceBefore = token.balanceOf(user2);
+        uint256 user3BalanceBefore = token.balanceOf(user3);
+
+        // 4. Prepare for upgrade
+        VaultV2 newImplementation = new VaultV2();
+
+        // 5. Perform upgrade
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImplementation), "");
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+
+        // 6. Verify state preservation
+        assertEq(user1SharesBefore, upgradedVault.balanceOf(user1));
+        assertEq(user2SharesBefore, upgradedVault.balanceOf(user2));
+        assertEq(user3SharesBefore, upgradedVault.balanceOf(user3));
+        assertEq(user1BalanceBefore, token.balanceOf(user1));
+        assertEq(user2BalanceBefore, token.balanceOf(user2));
+        assertEq(user3BalanceBefore, token.balanceOf(user3));
+
+        // 7. Post-upgrade deposits
+        uint256 amount1_2 = 20 * 10 ** 18;
+        uint256 amount2_2 = 25 * 10 ** 18;
+        uint256 amount3_2 = 30 * 10 ** 18;
+        token.transfer(user1, amount1_2);
+        token.transfer(user2, amount2_2);
+        token.transfer(user3, amount3_2);
+        // Perform deposits
+        vm.startPrank(user1);
+        token.approve(address(upgradedVault), amount1_2);
+        vault.deposit(amount1_2, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        token.approve(address(upgradedVault), amount2_2);
+        vault.deposit(amount2_2, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        token.approve(address(upgradedVault), amount3_2);
+        vault.deposit(amount3_2, user3);
+        vm.stopPrank();
+
+        assertEq(upgradedVault.balanceOf(user1), amount1 + amount1_2);
+        assertEq(upgradedVault.balanceOf(user2), amount2 + amount2_2);
+        assertEq(upgradedVault.balanceOf(user3), amount3 + amount3_2);
+
+        // 8. Test new functionality with deposits
+        vm.prank(address(timelock));
+        upgradedVault.pause();
+        assertTrue(upgradedVault.paused());
+
+        token.transfer(user1, amount1_2);
+        vm.startPrank(user1);
+        token.approve(address(upgradedVault), amount1_2);
+        vm.expectRevert();
+        vault.deposit(amount1_2, user1);
+        vm.stopPrank();
+
+        vm.prank(address(timelock));
+        upgradedVault.unpause();
+        assertFalse(upgradedVault.paused());
+        vm.startPrank(user1);
+        token.approve(address(upgradedVault), amount1_2);
+        vault.deposit(amount1_2, user1);
+        vm.stopPrank();
+
+        assertEq(upgradedVault.balanceOf(user1), amount1 + 2 * amount1_2);
+
+        // 9. Withdrawal testing
+        uint256 withdrawAmount = 50 * 10 ** 18;
+        uint256 expectedBurnedShares = vault.previewWithdraw(withdrawAmount);
+
+        vm.prank(user1);
+        vault.approve(address(this), expectedBurnedShares);
+
+        uint256 burnedShares = vault.withdraw(withdrawAmount, user1, user1);
+        assertEq(expectedBurnedShares, burnedShares);
+
+        // 10. Edge cases
+        // Test deposit of zero amount
+        vm.startPrank(user1);
+        token.approve(address(upgradedVault), 0);
+        uint256 sharesBefore = upgradedVault.balanceOf(user1);
+        upgradedVault.deposit(0, user1);
+        assertEq(
+            upgradedVault.balanceOf(user1),
+            sharesBefore,
+            "Zero deposit should not change shares"
+        );
+        vm.stopPrank();
+
+        // Test very small deposit (1 wei)
+        vm.startPrank(user1);
+        token.approve(address(upgradedVault), 1);
+        sharesBefore = upgradedVault.balanceOf(user1);
+        uint256 sharesReceived = upgradedVault.deposit(1, user1);
+        assertEq(
+            upgradedVault.balanceOf(user1),
+            sharesBefore + sharesReceived,
+            "Tiny deposit should work correctly"
+        );
+        vm.stopPrank();
+
+        // Test exchange rate changes by direct token transfer
+        uint256 directDonation = 100 * 10 ** 18;
+        token.transfer(address(upgradedVault), directDonation);
+        assertEq(
+            upgradedVault.totalAssets(),
+            totalAssetsBefore +
+                2 *
+                amount1_2 +
+                amount2_2 +
+                amount3_2 +
+                1 +
+                directDonation -
+                withdrawAmount,
+            "Total assets incorrect after donation"
+        );
+
+        // Test deposit after exchange rate change
+        uint256 depositAmountAfterDonation = 10 * 10 ** 18;
+        token.transfer(user2, depositAmountAfterDonation);
+        vm.startPrank(user2);
+        token.approve(address(upgradedVault), depositAmountAfterDonation);
+        uint256 previewedShares = upgradedVault.previewDeposit(
+            depositAmountAfterDonation
+        );
+        sharesReceived = upgradedVault.deposit(
+            depositAmountAfterDonation,
+            user2
+        );
+        assertEq(
+            sharesReceived,
+            previewedShares,
+            "Shares received should match preview"
+        );
+        assertTrue(
+            sharesReceived < depositAmountAfterDonation,
+            "Shares should be less than assets after donation"
+        );
+        vm.stopPrank();
+
+        // Test max withdrawal
+        vm.prank(user3);
+        uint256 maxWithdraw = upgradedVault.maxWithdraw(user3);
+        assertTrue(maxWithdraw > 0, "Max withdraw should be non-zero");
+        assertEq(
+            maxWithdraw,
+            upgradedVault.convertToAssets(upgradedVault.balanceOf(user3)),
+            "Max withdraw should equal converted shares"
+        );
+
+        // Test rounding consistency across multiple operations
+        address roundingTester = makeAddr("ROUNDING_TESTER");
+        uint256 smallAmount = 5; // Odd number to check rounding
+        token.transfer(roundingTester, smallAmount * 10);
+        vm.startPrank(roundingTester);
+        token.approve(address(upgradedVault), smallAmount * 10);
+
+        uint256 shareSum = 0;
+        for (uint i = 0; i < 10; i++) {
+            shareSum += upgradedVault.deposit(smallAmount, roundingTester);
+        }
+
+        uint256 bulkShares = upgradedVault.previewDeposit(smallAmount * 10);
+        assertApproxEqRel(
+            shareSum,
+            bulkShares,
+            0.05e18,
+            "Bulk deposit should not be more than 5% more efficient"
+        );
+        vm.stopPrank();
+    }
 
     // Edge Cases and Security
     function testReentrancyProtection() public {}
