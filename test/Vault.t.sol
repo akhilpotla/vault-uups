@@ -7,7 +7,7 @@ import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {GovToken} from "../src/GovToken.sol";
-import {MaliciousVault} from "../src/MaliciousVault.sol";
+import {MaliciousVault} from "./mock/MaliciousVault.sol";
 import {Vault} from "../src/Vault.sol";
 import {VaultV2} from "../src/VaultV2.sol";
 import {VaultGovernor} from "../src/VaultGovernor.sol";
