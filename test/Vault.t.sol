@@ -8,6 +8,7 @@ import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {GovToken} from "../src/GovToken.sol";
 import {MaliciousVault} from "./mock/MaliciousVault.sol";
+import {ReentrancyAttacker} from "./mock/ReentrancyAttacker.sol";
 import {Vault} from "../src/Vault.sol";
 import {VaultV2} from "../src/VaultV2.sol";
 import {VaultGovernor} from "../src/VaultGovernor.sol";
@@ -1006,8 +1007,64 @@ contract VaultTest is Test {
         vm.stopPrank();
     }
 
-    // Edge Cases and Security
-    function testReentrancyProtection() public {}
+    function testReentrancyProtection() public {
+        // 1. Setup the vault
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        // 2. Create malicious attacker contract
+        ReentrancyAttacker attacker = new ReentrancyAttacker(
+            address(vault),
+            address(token)
+        );
+
+        // 3. Fund the attacker
+        uint256 attackAmount = 50 * 10 ** 18;
+        token.transfer(address(attacker), attackAmount);
+
+        // 4. Record initial state for verification
+        uint256 initialVaultAssets = vault.totalAssets();
+        uint256 initialAttackerTokens = token.balanceOf(address(attacker));
+
+        // 5. Execute attack - should fail safely
+        attacker.performAttack(attackAmount);
+
+        // 6. Verify the attack failed safely (didn't succeed in multiple withdrawals)
+        assertEq(attacker.attackCount(), 0, "Reentrancy attack succeeded");
+
+        // 7. Verify vault state remains consistent
+        assertEq(
+            vault.totalAssets(),
+            initialVaultAssets + attackAmount,
+            "Vault assets inconsistent after attack"
+        );
+        assertEq(
+            token.balanceOf(address(vault)),
+            initialVaultAssets + attackAmount,
+            "Vault token balance inconsistent"
+        );
+        assertEq(
+            vault.balanceOf(address(attacker)),
+            attackAmount,
+            "Attacker received incorrect shares"
+        );
+
+        // 8. Try clean withdrawal (should work)
+        attacker.withdrawWithoutAttack(attackAmount / 2);
+        assertEq(
+            vault.balanceOf(address(attacker)),
+            attackAmount / 2,
+            "Normal withdrawal failed"
+        );
+
+        // 9. Try a different attack vector (mint/redeem)
+        attacker.setAttackMethod(1); // Use a different attack method
+        attacker.performAttack(attackAmount / 4);
+        assertEq(attacker.attackCount(), 0, "Second attack vector succeeded");
+    }
     function testFuzzDeposits() public {}
     function testFuzzWithdraws() public {}
     function testTransferOwnershipDoesNotAffectFunds() public {}
