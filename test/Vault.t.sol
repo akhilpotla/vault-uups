@@ -787,6 +787,7 @@ contract VaultTest is Test {
         vm.expectRevert("Pausable: paused");
         upgradedVault.deposit(10 * 10 ** 18, user1);
     }
+
     function testDepositAndUpgrade() public {
         // 1. Setup initial environment
         (
@@ -1066,5 +1067,98 @@ contract VaultTest is Test {
         assertEq(attacker.attackCount(), 0, "Second attack vector succeeded");
     }
 
-    function testTransferOwnershipDoesNotAffectFunds() public {}
+    function testTransferOwnershipDoesNotAffectFunds() public {
+        // 1. Setup phase
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        // 2. Initial state creation
+        address user1 = makeAddr("USER1");
+        address user2 = makeAddr("USER2");
+        address user3 = makeAddr("USER3");
+        uint256 amount1 = 100 * 10 ** 18;
+        uint256 amount2 = 250 * 10 ** 18;
+        uint256 amount3 = 75 * 10 ** 18;
+
+        // Transfer tokens to users
+        token.transfer(user1, amount1);
+        token.transfer(user2, amount2);
+        token.transfer(user3, amount3);
+
+        // Perform deposits
+        vm.startPrank(user1);
+        token.approve(address(vault), amount1);
+        vault.deposit(amount1, user1);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        token.approve(address(vault), amount2);
+        vault.deposit(amount2, user2);
+        vm.stopPrank();
+
+        vm.startPrank(user3);
+        token.approve(address(vault), amount3);
+        vault.deposit(amount3, user3);
+        vm.stopPrank();
+
+        uint256 totalAssets = vault.totalAssets();
+        uint256 user1Shares = vault.balanceOf(user1);
+        uint256 user2Shares = vault.balanceOf(user2);
+        uint256 user3Shares = vault.balanceOf(user3);
+        uint256 user1Balance = token.balanceOf(user1);
+        uint256 user2Balance = token.balanceOf(user2);
+        uint256 user3Balance = token.balanceOf(user3);
+
+        // 3. Transfer ownership
+        address NEW_OWNER = makeAddr("NEW_OWNER");
+        bytes32 DEFAULT_ADMIN_ROLE = 0x00;
+        vault.grantRole(DEFAULT_ADMIN_ROLE, NEW_OWNER);
+        vault.revokeRole(DEFAULT_ADMIN_ROLE, TOKEN_DEPLOYER);
+
+        assertTrue(vault.hasRole(DEFAULT_ADMIN_ROLE, NEW_OWNER));
+        assertFalse(vault.hasRole(DEFAULT_ADMIN_ROLE, TOKEN_DEPLOYER));
+
+        // 4. Verify state preservation
+        assertEq(user1Shares, vault.balanceOf(user1));
+        assertEq(user2Shares, vault.balanceOf(user2));
+        assertEq(user3Shares, vault.balanceOf(user3));
+        assertEq(user1Balance, token.balanceOf(user1));
+        assertEq(user2Balance, token.balanceOf(user2));
+        assertEq(user3Balance, token.balanceOf(user3));
+
+        // 5. Test operations post-transfer
+        vm.startPrank(user1);
+        uint256 maxWithdraw = vault.maxWithdraw(user1);
+        uint256 expectedBurnedShares = vault.previewWithdraw(maxWithdraw);
+        vault.approve(address(this), expectedBurnedShares);
+        uint256 burnedShares = vault.withdraw(maxWithdraw, user1, user1);
+        assertEq(expectedBurnedShares, burnedShares);
+        assertEq(token.balanceOf(user1), amount1);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        token.approve(address(vault), amount1);
+        vault.deposit(amount1, user1);
+        vm.stopPrank();
+
+        bytes32 ANOTHER_ROLE = keccak256("ANOTHER_ROLE");
+        vm.prank(TOKEN_DEPLOYER);
+        vm.expectRevert();
+        vault.grantRole(ANOTHER_ROLE, user2);
+
+        // 6. Test role management
+        bytes32 CUSTOM_ROLE = keccak256("CUSTOM_ROLE");
+        vm.prank(NEW_OWNER);
+        vault.grantRole(CUSTOM_ROLE, user1);
+
+        // 7. Test governance operations (unchanged)
+        bytes32 GOVERNANCE_ROLE = vault.GOVERNANCE_ROLE();
+        assertTrue(
+            vault.hasRole(GOVERNANCE_ROLE, address(timelock)),
+            "Timelock governance role should be unaffected"
+        );
+    }
 }
