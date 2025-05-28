@@ -17,7 +17,7 @@ contract GovTokenTest is Test {
         token.transfer(USER, 500);
     }
 
-    function testInitialSupply() public view {
+    function testInitialSupply() public {
         assertEq(
             token.totalSupply(),
             INITIAL_SUPPLY,
