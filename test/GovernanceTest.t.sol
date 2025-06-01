@@ -423,12 +423,175 @@ contract GovernanceTest is Test {
 
     function testGovernanceOnFork() public {
         // 1. Setup the fork environment
+        string memory sepoliaRpcUrl = vm.envString("SEPOLIA_RPC_URL");
+        uint256 forkId = vm.createFork(sepoliaRpcUrl);
+        vm.selectFork(forkId);
+        assertTrue(vm.activeFork() == forkId, "Fork not active");
+
+        // Use a real block number from Sepolia
+        uint256 realBlockNumber = 4_500_000; // Example Sepolia block
+        vm.rollFork(realBlockNumber);
+
         // 2. Contract deployment options
+        // For this test, we'll deploy new contracts on the fork
+        token = new GovToken(INITIAL_SUPPLY * 10 ** 18, SUPPLY_CAP * 10 ** 18);
+        TOKEN_DEPLOYER = address(this);
+        vaultImpl = new Vault();
+
+        // Reset proposers and executors arrays for fresh setup
+        delete proposers;
+        delete executors;
+        proposers = new address[](1);
+        executors = new address[](1);
+        proposers[0] = TOKEN_DEPLOYER;
+        executors[0] = address(0);
+
+        // Use a realistic timelock delay for mainnet/testnet conditions
+        uint256 REALISTIC_DELAY = 2 days;
+        timelock = new TimelockController(
+            REALISTIC_DELAY,
+            proposers,
+            executors,
+            TOKEN_DEPLOYER
+        );
+
+        bytes memory initData = abi.encodeWithSelector(
+            Vault.initialize.selector,
+            address(token),
+            address(timelock),
+            TOKEN_DEPLOYER
+        );
+        proxy = new ERC1967Proxy(address(vaultImpl), initData);
+        vault = Vault(address(proxy));
+        governor = new VaultGovernor(token, timelock);
+
         // 3. Setup governance structure
+        _setupGovernanceSystemRoles();
+
+        // Create test users with voting power
+        address user1 = makeAddr("USER1");
+        address user2 = makeAddr("USER2");
+        address user3 = makeAddr("USER3");
+        uint256 amount1 = 100 * 10 ** 18;
+        uint256 amount2 = 250 * 10 ** 18;
+        uint256 amount3 = 75 * 10 ** 18;
+        _setupVotingAccounts(user1, user2, user3, amount1, amount2, amount3);
+
+        // Verify setup
+        assertTrue(timelock.hasRole(PROPOSER_ROLE, address(governor)));
+        assertTrue(timelock.hasRole(EXECUTOR_ROLE, address(governor)));
+        assertTrue(vault.hasRole(UPGRADER_ROLE, address(timelock)));
+
         // 4. Create an upgrade proposal
+        VaultV2 newImplementation = new VaultV2();
+        bytes memory upgradeCallData = abi.encodeWithSelector(
+            vault.upgradeToAndCall.selector,
+            address(newImplementation),
+            ""
+        );
+
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        string memory description = "Proposal #1: Upgrade the vault on fork";
+
+        targets[0] = address(proxy);
+        values[0] = 0;
+        calldatas[0] = upgradeCallData;
+
+        // Ensure test contract has voting power
+        token.delegate(TOKEN_DEPLOYER);
+
         // 5. Use real block data
+        // Submit the proposal
+        uint256 proposalId = governor.propose(
+            targets,
+            values,
+            calldatas,
+            description
+        );
+
+        // Get current Sepolia block timestamp
+        uint256 currentBlockTime = block.timestamp;
+
+        // Move forward to voting delay with realistic block times
+        // On Sepolia, blocks come roughly every 12 seconds
+        vm.roll(block.number + governor.votingDelay() + 1);
+        vm.warp(currentBlockTime + (governor.votingDelay() + 1) * 12);
+
         // 6. Execute the governance flow
-        // 7. Verify seccessful execution
+        // Cast votes
+        governor.castVote(proposalId, 1); // Vote in favor from test contract
+
+        vm.prank(user1);
+        governor.castVote(proposalId, 1);
+
+        vm.prank(user2);
+        governor.castVote(proposalId, 1);
+
+        vm.prank(user3);
+        governor.castVote(proposalId, 2); // Vote against
+
+        // Advance time realistically
+        vm.roll(block.number + governor.votingPeriod() + 1);
+        vm.warp(block.timestamp + (governor.votingPeriod() + 1) * 12);
+
+        // Verify the proposal succeeded
+        assertEq(
+            uint256(governor.state(proposalId)),
+            uint256(IGovernor.ProposalState.Succeeded),
+            "Proposal should be in succeeded state"
+        );
+
+        // Queue the proposal
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        // Advance time past the timelock delay
+        vm.warp(block.timestamp + REALISTIC_DELAY + 1 hours); // Add buffer time
+
+        // Execute the proposal
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        // 7. Verify successful execution
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+
+        // Verify the upgrade was successful by testing new functionality
+        vm.prank(address(timelock));
+        upgradedVault.pause();
+        assertTrue(upgradedVault.paused(), "Upgraded vault should be pausable");
+
+        // Check implementation address
+        bytes32 IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+        address currentImpl = address(
+            uint160(uint256(vm.load(address(proxy), IMPLEMENTATION_SLOT)))
+        );
+        assertEq(
+            currentImpl,
+            address(newImplementation),
+            "Implementation address not updated"
+        );
+
         // 8. Test on different network states
+        // Create another fork at a different block
+        uint256 laterBlockNumber = 4_600_000; // Some later block
+        vm.rollFork(laterBlockNumber);
+
+        // Try operations in the new fork state
+        vm.prank(address(timelock));
+        upgradedVault.unpause();
+        assertFalse(
+            upgradedVault.paused(),
+            "Unpause should work in new network state"
+        );
+
+        // Test deposits still work after upgrade across fork states
+        token.approve(address(upgradedVault), amount1);
+        upgradedVault.deposit(amount1, TOKEN_DEPLOYER);
+        assertEq(
+            upgradedVault.balanceOf(TOKEN_DEPLOYER),
+            amount1,
+            "Deposit should work after upgrade on fork"
+        );
     }
 }
