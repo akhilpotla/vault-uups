@@ -1161,4 +1161,32 @@ contract VaultTest is Test {
             "Timelock governance role should be unaffected"
         );
     }
+
+    function testUpgradeGasEfficiency() public {
+        // 1. Setup initial environment
+        (
+            TimelockController timelock,
+            ERC1967Proxy proxy
+        ) = _setupVaultAndProxy();
+        vault = Vault(address(proxy));
+
+        token.approve(address(vault), 1 ether);
+        uint256 gasBeforeV1 = gasleft();
+        vault.deposit(1 ether, TOKEN_DEPLOYER);
+        uint256 gasAfterV1 = gasleft();
+        uint256 gasUsedV1 = gasBeforeV1 - gasAfterV1;
+        // 2. Upgrade to VaultV2
+        VaultV2 newImplementation = new VaultV2();
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImplementation), "");
+        VaultV2 upgradedVault = VaultV2(address(proxy));
+        // 3. Test gas efficiency in VaultV2
+        token.approve(address(upgradedVault), 1 ether);
+        uint256 gasBeforeV2 = gasleft();
+        upgradedVault.deposit(1 ether, TOKEN_DEPLOYER);
+        uint256 gasAfterV2 = gasleft();
+        uint256 gasUsedV2 = gasBeforeV2 - gasAfterV2;
+        console.log("V1 gas used for deposit:", gasUsedV1);
+        console.log("V2 gas used for deposit:", gasUsedV2);
+    }
 }
