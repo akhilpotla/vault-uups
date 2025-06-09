@@ -1,10 +1,12 @@
-Vault-UUPS: Upgradeable ERC4626 Vault with On-Chain Governance
+# Vault-UUPS: Upgradeable ERC4626 Vault with On-Chain Governance
+
 A secure, upgradeable ERC4626 vault implementation with comprehensive on-chain governance, enabling decentralized management and upgrade paths for the vault's functionality.
 
-Overview
+## Overview
+
 This project implements a tokenized vault following the ERC4626 standard with a secure upgrade mechanism using OpenZeppelin's UUPS (Universal Upgradeable Proxy Standard) pattern. The system includes a complete governance layer to ensure that upgrades and significant vault actions are executed through democratic processes.
 
-🛠 Architecture
+## 🛠 Architecture
 
 Core Components:
 
@@ -24,7 +26,8 @@ Security Design:
   - Implementation through timelock controller for transparency
   - Authorization checks prevent unauthorized upgrades
 
-🚀 Getting Started
+## 🚀 Getting Started
+
 Prerequisites
 
 - Foundry
@@ -94,7 +97,7 @@ uint256 withdrawAmount = 50 * 10**18; // 50 tokens
 vault.withdraw(withdrawAmount, receiverAddress, ownerAddress);
 ```
 
-Security Considerations
+## Security Considerations
 The system implements several security best practices:
 
 1. Timelock-enforced upgrades: All upgrades must pass through the timelock delay
@@ -111,7 +114,7 @@ Attack Vectors Addressed
 - Function selector clashes: Avoided in upgrades
 - Storage layout corruption: Protected through proper inheritance order
 
-Testing
+## Testing
 
 ```
 # Run all tests
